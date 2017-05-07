@@ -23,6 +23,16 @@ optional arguments:
 
 ### Example
 
+The build script
+```python
+from __future__ import (absolute_import, division, print_function)
+
+def run(ctxt):
+    for ret in ctxt.cmd(*[ 'apk update', 'apk add python']):
+        print(ret)
+```
+
+Run docker-image-builder
 ```sh
 $ ./target/docker-image-builder  build -s alpine:3.5 -c b1 -t ownport/python:alpine-3.5 --build-script examples/simple-build.py --re-run --remove-staging
 2017-05-07 22:01:06,486 (builder.docker) [INFO] {"msg": "Starting base container", "image.name": "alpine:3.5", "container.name": "b1", "rerun": true}
