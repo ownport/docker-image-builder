@@ -1,0 +1,4 @@
+
+
+def ping():
+    return 'pong'
