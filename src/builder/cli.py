@@ -116,8 +116,8 @@ class CLI(object):
         if args.remove_staging:
             staging_container_id = [c[u'id'] for c in docker_cli.containers_list()
                                     if args.container_name == c[u'names']]
-            docker_cli.stop_containers(staging_container_id)
-            docker_cli.remove_containers(staging_container_id)
+            docker_cli.stop_containers(*staging_container_id)
+            docker_cli.remove_containers(*staging_container_id)
 
     @staticmethod
     def halt():
