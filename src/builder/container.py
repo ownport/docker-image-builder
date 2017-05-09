@@ -3,6 +3,8 @@ from __future__ import (absolute_import, division, print_function)
 import shlex
 
 from builder.docker import DockerCLI
+from builder.modules import facts
+
 
 class ContainerContext(object):
     def __init__(self, container_name):
@@ -14,14 +16,22 @@ class ContainerContext(object):
 
         self._container_name = container_name
 
-    def cmd(self, *args):
+    def facts(self):
         '''
-        Run command(-s)
-        :param args: command line arguments
-        :return: yield of command stdout
+        Gather facts
+        :return: 
         '''
-        ret = list()
-        for arg in args:
-            _args = shlex.split(arg)
-            ret.append(self._cli.execute(self._container_name, _args).strip())
-        return ret
+        _facts = dict()
+        _facts.update(facts.parse_cpuinfo(self.cmd('cat /proc/cpuinfo')))
+        _facts.update(facts.parse_meminfo(self.cmd('cat /proc/meminfo')))
+        return _facts
+
+    def cmd(self, command):
+        '''
+        Execute command
+        :param command: command line arguments as string
+        :return: command stdout
+        '''
+        args = shlex.split(command)
+        stdout = self._cli.execute(self._container_name, *args)
+        return stdout
