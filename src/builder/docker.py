@@ -102,8 +102,8 @@ class DockerCLI(object):
                 return None
             else:
                 container_ids = [c[u'id'] for c in container_exists]
-                self.stop_containers(*container_ids)
-                self.remove_containers(*container_ids)
+                self.stop_containers(container_ids)
+                self.remove_containers(container_ids)
         _id = self.run('-d', '--name=%s' % container_name, image_name, '/bin/sh', '-c', 'tail -f /dev/null').strip()
         logger.info(**{u'msg': 'Base container was created', u'container.id': _id})
         return _id
@@ -151,9 +151,9 @@ class DockerCLI(object):
         :param args: the list of command line arguments
         :return: exit code of command execution
         '''
-        logger.info(**{u'msg': u'Execute command(-s) in the container',
+        logger.info(**{u'msg': u'Execute command in the container',
                        u'container.name': containter_name,
-                       u'commands.args': args})
+                       u'command.args': args})
         try:
             return sh.docker('exec', containter_name, *args)
         except sh.ErrorReturnCode as err:
