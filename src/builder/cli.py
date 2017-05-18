@@ -1,5 +1,6 @@
 from __future__ import (absolute_import, division, print_function)
 
+import os
 import imp
 import sys
 import logging
@@ -9,6 +10,7 @@ from builder import BUILDER_VERSION
 from builder.log import Logger
 from builder.docker import DockerCLI
 from builder.container import ContainerContext
+from builder.dataloader import DataLoader
 
 BUILDER_USAGE = '''docker-image-builer <command> [<args>]
 
@@ -76,24 +78,43 @@ class CLI(object):
         parser = argparse.ArgumentParser(description='build Docker image')
         parser.add_argument('-s', '--source_image_name', dest='source_image_name', required=True,
                             help="source (base) image name")
-        parser.add_argument('-c', '--container_name', dest='container_name', required=True,
-                            help="container name (staging)")
         parser.add_argument('-t', '--target_image_name', dest='target_image_name', required=True,
                             help="target image name")
-        parser.add_argument('-b', '--build-script', dest='build_script', required=True,
-                            help="build script")
+        parser.add_argument('-b', '--build-module', dest='build_module', required=True,
+                            help="build module")
+        parser.add_argument('-p', '--build-modules-path', dest='build_modules_path', action='append',
+                            help="build modules path, it will be added to sys.path")
         parser.add_argument('--re-run', dest='rerun', action='store_true',
                             help="re-run container if exists, default: False")
         parser.add_argument('--remove-staging', dest='remove_staging', action='store_true',
                             help="remove staging container after commit")
         parser.add_argument('--enable-sh-logging', action='store_true',
                             help='Enable sh module logging, default: disabled')
+        parser.add_argument('--volume', dest='volume', action='append',
+                            help="mount the volume to the container, format: host-path:container-path")
+        parser.add_argument('--vars', dest='vars', action='append',
+                            help="variables file")
         args = parser.parse_args(sys.argv[2:])
 
         if args.enable_sh_logging:
             logging.getLogger('sh').setLevel('INFO')
         else:
             logging.getLogger('sh').setLevel(logging.WARNING)
+
+        if args.build_modules_path:
+            for path in args.build_modules_path:
+                abspath = os.path.abspath(path)
+                if os.path.exists(abspath):
+                    logger.info(msg=u'Adding the build module path to sys.path', path=abspath)
+                    sys.path.append(abspath)
+                else:
+                    logger.warning(msg=u'The build module path does not exist', path=abspath)
+
+        vars = dict()
+        if args.vars:
+            for path in args.vars:
+                for kvs in DataLoader().load_from_file(path):
+                    vars.update(kvs)
 
         docker_cli = DockerCLI()
 
@@ -103,21 +124,31 @@ class CLI(object):
             logger.info(**{u'msg': u'Available images', u'images': images_list})
             sys.exit(1)
 
-        docker_cli.run_base_container(args.source_image_name, args.container_name, rerun=args.rerun)
-
-        build_script = imp.load_source('build.script', args.build_script)
+        container_name = '%s-build-container' % args.source_image_name.translate(None, ':/#')
+        docker_cli.run_base_container(image_name=args.source_image_name,
+                                      container_name=container_name,
+                                      rerun=args.rerun,
+                                      volumes=args.volume)
         try:
-            build_script.run(ContainerContext(args.container_name))
-            docker_cli.commit(args.container_name, args.target_image_name)
-        except AttributeError as err:
-            logger.error(**{u'msg': u'Cannot execute run() from the build script',
-                            u'build.script': args.build_script})
+            module = __import__(args.build_module, globals(), locals(), ['BuildModule',])
+            try:
+                module.BuildModule(ContainerContext(container_name)).run(**vars)
+                docker_cli.commit(container_name, args.target_image_name)
+            except AttributeError as err:
+                logger.error(**{u'msg': u'Cannot execute run() from the build script',
+                                u'build.script': args.build_module,
+                                u'error.msg': err})
 
-        if args.remove_staging:
-            staging_container_id = [c[u'id'] for c in docker_cli.containers_list()
-                                    if args.container_name == c[u'names']]
-            docker_cli.stop_containers(*staging_container_id)
-            docker_cli.remove_containers(*staging_container_id)
+            if args.remove_staging:
+                staging_container_id = [c[u'id'] for c in docker_cli.containers_list()
+                                        if container_name == c[u'names']]
+                docker_cli.stop_containers(*staging_container_id)
+                docker_cli.remove_containers(*staging_container_id)
+        except ImportError as err:
+            logger.error(**{u'msg': u'Cannot execute run() from the build module',
+                            u'build.script': args.build_module,
+                            u'error.msg': err.message})
+            sys.exit(1)
 
     @staticmethod
     def halt():

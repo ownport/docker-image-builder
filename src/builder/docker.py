@@ -2,6 +2,7 @@ from __future__ import (absolute_import, division, print_function)
 
 import sh
 import json
+import itertools
 
 from builder.log import Logger
 
@@ -33,7 +34,7 @@ class DockerCLI(object):
                     u'createdAt': img.get(u'CreatedAt', '')
                 }
         except sh.ErrorReturnCode as err:
-            logger.error(**{u'msg': err.stderr})
+            logger.error(msg=err.stderr)
             raise StopIteration()
 
     def containers_list(self):
@@ -66,7 +67,7 @@ class DockerCLI(object):
                     u'size': cont.get(u'Size', 0),
                 }
         except sh.ErrorReturnCode as err:
-            logger.error(**{u'msg': err.stderr})
+            logger.error(msg=err.stderr)
             raise StopIteration()
 
     def run(self, *args):
@@ -78,10 +79,10 @@ class DockerCLI(object):
         try:
             return sh.docker.run(*args).strip()
         except sh.ErrorReturnCode as err:
-            logger.error(**{u'msg': err.stderr})
+            logger.error(msg=err.stderr)
             return None
 
-    def run_base_container(self, image_name, container_name, rerun=False):
+    def run_base_container(self, image_name, container_name, rerun=False, volumes=[]):
         ''' 
         Run base container as daemon
         :param image_name: Image name
@@ -98,13 +99,18 @@ class DockerCLI(object):
         if container_exists:
             logger.warning(**{u'msg': u'Container exists', u'container.details': container_exists})
             if not rerun:
-                logger.info(**{u'msg': u'Base container was not created'})
+                logger.info(msg=u'Base container was not created')
                 return None
             else:
                 container_ids = [c[u'id'] for c in container_exists]
-                self.stop_containers(container_ids)
-                self.remove_containers(container_ids)
-        _id = self.run('-d', '--name=%s' % container_name, image_name, '/bin/sh', '-c', 'tail -f /dev/null').strip()
+                self.stop_containers(*container_ids)
+                self.remove_containers(*container_ids)
+        _args = ['-d', '--name=%s' % container_name]
+        if volumes:
+            _args.extend(list(itertools.chain(*[('--volume', v) for v in volumes])))
+        _args.extend([ image_name, '/bin/sh', '-c', 'tail -f /dev/null'])
+        logger.info(msg=u'Container options', args=_args)
+        _id = self.run(*_args).strip()
         logger.info(**{u'msg': 'Base container was created', u'container.id': _id})
         return _id
 
@@ -117,13 +123,13 @@ class DockerCLI(object):
         logger.info(**{u'msg': u'Stopping containers', u'container.ids': ids})
 
         if not ids:
-            logger.info(**{u'msg': u'No containers for stopping'})
+            logger.info(msg=u'No containers for stopping')
             return []
 
         try:
             return sh.docker.stop(*ids).strip()
         except sh.ErrorReturnCode as err:
-            logger.error(**{u'msg': err.stderr})
+            logger.error(msg=err.stderr)
             return []
 
     def remove_containers(self, *ids):
@@ -135,13 +141,13 @@ class DockerCLI(object):
         logger.info(**{u'msg': u'Removing containers', u'container.ids': ids})
 
         if not ids:
-            logger.info(**{u'msg': u'No containers for stopping'})
+            logger.info(msg=u'No containers for stopping')
             return []
 
         try:
             return sh.docker.rm(*ids).strip()
         except sh.ErrorReturnCode as err:
-            logger.error(**{u'msg': err.stderr})
+            logger.error(msg=err.stderr)
             return []
 
     def execute(self, containter_name, *args):
@@ -189,5 +195,40 @@ class DockerCLI(object):
                            u'image.id': _id})
             return _id
         except sh.ErrorReturnCode as err:
-            logger.error(**{u'msg': err.stderr})
+            logger.error(msg=err.stderr)
             return []
+
+    def inspect(self, container_name, path):
+        '''
+        Inspect docker container
+        
+        :param container_name: Docker container name
+        :param path: JSON path
+        :return: selection by JSON path
+        '''
+        logger.info(**{u'msg': u'Inspect docker container',
+                       u'container.name': container_name,
+                       u'json.path': path})
+        try:
+            return json.loads(sh.docker.inspect('-f', '{{ json %s }}' % path, container_name).strip())
+        except sh.ErrorReturnCode as err:
+            logger.error(msg=err.stderr)
+            return None
+
+    def copy(self, src, dest):
+        '''
+        Copy files/folders between a container and the local filesystem
+        
+        :param src: source path
+        :param dest: destination path
+        :return: result of copying (True/False)
+        '''
+        logger.info(**{u'msg': u'Copying files',
+                       u'source.path': src,
+                        u'destination.path': dest})
+        try:
+            sh.docker.cp(src, dest)
+            return True
+        except sh.ErrorReturnCode as err:
+            logger.error(msg=err.stderr.strip())
+            return False
