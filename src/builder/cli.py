@@ -1,8 +1,8 @@
 from __future__ import (absolute_import, division, print_function)
 
 import os
-import imp
 import sys
+import json
 import logging
 import argparse
 
@@ -112,9 +112,18 @@ class CLI(object):
 
         vars = dict()
         if args.vars:
-            for path in args.vars:
-                for kvs in DataLoader().load_from_file(path):
-                    vars.update(kvs)
+            for _vars in args.vars:
+                if os.path.exists(_vars):
+                    for kvs in DataLoader().load_from_file(_vars):
+                        vars.update(kvs)
+                else:
+                    try:
+                        for kvs in DataLoader().load(_vars):
+                            vars.update(kvs)
+                    except ValueError as err:
+                        logger.error(msg=u'Cannot parse --vars argument. %s' % err,
+                                     vars=_vars)
+                        sys.exit(1)
 
         docker_cli = DockerCLI()
 
