@@ -56,7 +56,6 @@ class DataLoader(object):
 
     def load_from_file(self, filename):
         ''' Loads data from a file, which can contain either JSON or YAML.  '''
-
         if not os.path.exists(filename) or not os.path.isfile(filename):
             raise IOError('The file does not exist, %s' % filename)
 
